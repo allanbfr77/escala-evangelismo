@@ -634,6 +634,7 @@
   var pollingNomesId = null;
   var atualizandoNomes = false;
   var renderNomesPendente = false;
+  var dropdownNomesInicializado = false;
 
   function normalizarNome(nome) {
     return String(nome || '')
@@ -730,6 +731,7 @@
       select.value = nomeSelecionado;
     }
     select.disabled = nomesDisponiveis.length === 0;
+    dropdownNomesInicializado = true;
   }
 
   function listasIguais(a, b) {
@@ -756,15 +758,15 @@
         var novaLista = nomesBase.filter(function(nome) {
           return !ocupadosSet[normalizarNome(nome)];
         });
-        if (!listasIguais(nomesDisponiveis, novaLista)) {
+        if (!listasIguais(nomesDisponiveis, novaLista) || !dropdownNomesInicializado) {
           nomesDisponiveis = novaLista;
           renderizarDropdownNomes();
         }
+        atualizandoNomes = false;
       })
       .catch(function() {
         // Mantém a última lista válida para evitar "piscar" e liberar todos os nomes em falhas temporárias.
-      })
-      .finally(function() {
+        if (!dropdownNomesInicializado) renderizarDropdownNomes();
         atualizandoNomes = false;
       });
   }
