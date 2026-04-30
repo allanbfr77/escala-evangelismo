@@ -130,16 +130,7 @@ function getOccupiedNames(periodo) {
   return { ocupados: Object.keys(namesMap).sort() };
 }
 
-var CACHE_KEY_USED_NAMES = 'usedNames_v1';
-var CACHE_TTL_SECONDS    = 60;
-
 function getUsedNames() {
-  try {
-    var cache = CacheService.getScriptCache();
-    var cached = cache.get(CACHE_KEY_USED_NAMES);
-    if (cached) return JSON.parse(cached);
-  } catch (e) { /* ignora falha de cache */ }
-
   var ss  = SpreadsheetApp.openById(SHEET_ID);
   var aba = ss.getSheetByName('Disponibilidades') || ss.getSheets()[0];
   var lastRow = aba.getLastRow();
@@ -152,18 +143,10 @@ function getUsedNames() {
     if (!nome) continue;
     namesMap[nome] = true;
   }
-  var result = { ocupados: Object.keys(namesMap).sort() };
-
-  try {
-    CacheService.getScriptCache().put(CACHE_KEY_USED_NAMES, JSON.stringify(result), CACHE_TTL_SECONDS);
-  } catch (e) { /* ignora falha de cache */ }
-
-  return result;
+  return { ocupados: Object.keys(namesMap).sort() };
 }
 
-function invalidarCacheNomes() {
-  try { CacheService.getScriptCache().remove(CACHE_KEY_USED_NAMES); } catch (e) {}
-}
+function invalidarCacheNomes() { /* cache removido — leitura sempre ao vivo */ }
 
 function registrarEscala(selecionados) {
   if (!selecionados || selecionados.length === 0) return;

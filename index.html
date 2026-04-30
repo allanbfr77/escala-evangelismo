@@ -673,15 +673,16 @@
     return nomes.filter(Boolean);
   }
 
-  function fetchComTimeout(url, ms) {
+  function fetchComTimeout(url, ms, opcoes) {
     ms = ms || 20000;
+    var fetchOpts = Object.assign({ method: 'GET', redirect: 'follow' }, opcoes || {});
     return new Promise(function(resolve, reject) {
       var concluido = false;
       var timer = setTimeout(function() {
         if (!concluido) { concluido = true; reject(new Error('Timeout')); }
       }, ms);
 
-      fetch(url, { method: 'GET', redirect: 'follow' })
+      fetch(url, fetchOpts)
         .then(function(res) {
           if (!concluido) {
             clearTimeout(timer);
@@ -815,18 +816,19 @@
   }
 
   function buscarNomesApi() {
-    var url = SCRIPT_URL + '?action=getUsedNames';
+    var ts = Date.now();
+    var url = SCRIPT_URL + '?action=getUsedNames&_ts=' + ts;
     var temFetch = typeof fetch === 'function';
 
     if (temFetch) {
-      return fetchComTimeout(url, 20000)
+      return fetchComTimeout(url, 20000, { cache: 'no-store' })
         .then(processarPayloadNomes)
         .catch(function() {
-          return carregarJsonp(url + '&_ts=' + Date.now())
+          return carregarJsonp(url)
             .then(processarPayloadNomes);
         });
     }
-    return carregarJsonp(url + '&_ts=' + Date.now())
+    return carregarJsonp(url)
       .then(processarPayloadNomes);
   }
 
