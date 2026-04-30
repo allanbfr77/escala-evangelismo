@@ -673,31 +673,64 @@
     return nomes.filter(Boolean);
   }
 
+  function fetchComTimeout(url, ms) {
+    ms = ms || 20000;
+    return new Promise(function(resolve, reject) {
+      var concluido = false;
+      var timer = setTimeout(function() {
+        if (!concluido) { concluido = true; reject(new Error('Timeout')); }
+      }, ms);
+
+      fetch(url, { method: 'GET', redirect: 'follow' })
+        .then(function(res) {
+          if (!concluido) {
+            clearTimeout(timer);
+            concluido = true;
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+          }
+        })
+        .then(function(data) { if (data !== undefined) resolve(data); })
+        .catch(function(err) {
+          if (!concluido) { concluido = true; clearTimeout(timer); reject(err); }
+        });
+    });
+  }
+
   function carregarJsonp(url) {
     return new Promise(function(resolve, reject) {
       var callbackName = 'jsonpCallback_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
       var script = document.createElement('script');
       var timeoutId = null;
+      var concluido = false;
 
-      window[callbackName] = function(data) {
-        if (timeoutId) clearTimeout(timeoutId);
+      function limpar() {
         delete window[callbackName];
         if (script.parentNode) script.parentNode.removeChild(script);
+      }
+
+      window[callbackName] = function(data) {
+        if (concluido) return;
+        concluido = true;
+        clearTimeout(timeoutId);
+        limpar();
         resolve(data);
       };
 
       script.onerror = function() {
-        if (timeoutId) clearTimeout(timeoutId);
-        delete window[callbackName];
-        if (script.parentNode) script.parentNode.removeChild(script);
-        reject(new Error('Falha no carregamento JSONP'));
+        if (concluido) return;
+        concluido = true;
+        clearTimeout(timeoutId);
+        limpar();
+        reject(new Error('Falha JSONP'));
       };
 
       timeoutId = setTimeout(function() {
-        delete window[callbackName];
-        if (script.parentNode) script.parentNode.removeChild(script);
-        reject(new Error('Timeout na consulta JSONP'));
-      }, 12000);
+        if (concluido) return;
+        concluido = true;
+        limpar();
+        reject(new Error('Timeout JSONP'));
+      }, 15000);
 
       var separador = url.indexOf('?') >= 0 ? '&' : '?';
       script.src = url + separador + 'callback=' + encodeURIComponent(callbackName);
@@ -774,14 +807,27 @@
     return true;
   }
 
+  function processarPayloadNomes(payload) {
+    var ocupados = extrairNomesOcupados(payload);
+    var ocupadosSet = {};
+    ocupados.forEach(function(n) { ocupadosSet[n] = true; });
+    return nomesBase.filter(function(n) { return !ocupadosSet[normalizarNome(n)]; });
+  }
+
   function buscarNomesApi() {
-    var url = SCRIPT_URL + '?action=getUsedNames&_ts=' + Date.now();
-    return carregarJsonp(url).then(function(payload) {
-      var ocupados = extrairNomesOcupados(payload);
-      var ocupadosSet = {};
-      ocupados.forEach(function(n) { ocupadosSet[n] = true; });
-      return nomesBase.filter(function(n) { return !ocupadosSet[normalizarNome(n)]; });
-    });
+    var url = SCRIPT_URL + '?action=getUsedNames';
+    var temFetch = typeof fetch === 'function';
+
+    if (temFetch) {
+      return fetchComTimeout(url, 20000)
+        .then(processarPayloadNomes)
+        .catch(function() {
+          return carregarJsonp(url + '&_ts=' + Date.now())
+            .then(processarPayloadNomes);
+        });
+    }
+    return carregarJsonp(url + '&_ts=' + Date.now())
+      .then(processarPayloadNomes);
   }
 
   function iniciarCargaNomes(tentativa) {
