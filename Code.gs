@@ -107,7 +107,7 @@ function getOccupiedNames(periodo) {
   var namesMap = {};
   var yearMonth = periodFromText(periodo);
   for (var i = 0; i < registros.length; i++) {
-    var nome = String(registros[i][0] || '').trim().toUpperCase();
+    var nome = normalizePersonName(registros[i][0]);
     var dataIso = String(registros[i][1] || '').trim();
     if (!nome) continue;
 

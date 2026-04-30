@@ -632,9 +632,16 @@
   ];
   var nomesDisponiveis = nomesBase.slice();
   var pollingNomesId = null;
+  var atualizandoNomes = false;
+  var renderNomesPendente = false;
 
   function normalizarNome(nome) {
-    return String(nome || '').trim().toUpperCase();
+    return String(nome || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
   }
 
   function extrairNomesOcupados(payload) {
@@ -697,6 +704,11 @@
 
   function renderizarDropdownNomes() {
     var select = document.getElementById('nome');
+    if (document.activeElement === select) {
+      renderNomesPendente = true;
+      return;
+    }
+    renderNomesPendente = false;
     var nomeSelecionado = select.value;
     select.innerHTML = '';
 
@@ -720,7 +732,18 @@
     select.disabled = nomesDisponiveis.length === 0;
   }
 
+  function listasIguais(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
   function atualizarNomesDisponiveis() {
+    if (atualizandoNomes) return Promise.resolve();
+    atualizandoNomes = true;
     var url = SCRIPT_URL +
       '?action=getAll' +
       '&_ts=' + Date.now();
@@ -730,18 +753,29 @@
         var ocupados = extrairNomesOcupados(payload);
         var ocupadosSet = {};
         ocupados.forEach(function(nome) { ocupadosSet[nome] = true; });
-        nomesDisponiveis = nomesBase.filter(function(nome) {
+        var novaLista = nomesBase.filter(function(nome) {
           return !ocupadosSet[normalizarNome(nome)];
         });
-        renderizarDropdownNomes();
+        if (!listasIguais(nomesDisponiveis, novaLista)) {
+          nomesDisponiveis = novaLista;
+          renderizarDropdownNomes();
+        }
       })
       .catch(function() {
-        nomesDisponiveis = nomesBase.slice();
-        renderizarDropdownNomes();
+        // Mantém a última lista válida para evitar "piscar" e liberar todos os nomes em falhas temporárias.
+      })
+      .finally(function() {
+        atualizandoNomes = false;
       });
   }
 
   function iniciarSincronizacaoNomes() {
+    var select = document.getElementById('nome');
+    if (select) {
+      select.addEventListener('blur', function() {
+        if (renderNomesPendente) renderizarDropdownNomes();
+      });
+    }
     atualizarNomesDisponiveis();
     if (pollingNomesId) clearInterval(pollingNomesId);
     pollingNomesId = setInterval(atualizarNomesDisponiveis, 30000);
