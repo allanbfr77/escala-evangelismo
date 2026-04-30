@@ -219,6 +219,8 @@
     transition: background .15s, color .15s;
   }
   .cal-table td.vazio { pointer-events: none; }
+  .cal-table td.clicavel { cursor: pointer; touch-action: manipulation; }
+  .cal-table td.clicavel:active { transform: scale(0.97); }
   td.destaque { background: var(--amber-100); color: var(--amber-600); font-weight: 700; border: 1.5px solid #fde68a; }
   td.selecionado { background: var(--green-600) !important; color: #fff !important; font-weight: 700; box-shadow: 0 2px 8px rgba(5,150,105,.35); }
   .cal-legend { display: flex; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
@@ -788,6 +790,38 @@
     });
   }
 
+  function toggleDiaPeloCalendario(dia) {
+    if (!dia) return;
+    if (document.getElementById('ind-total').classList.contains('checked')) return;
+    var chip = document.querySelector('.day-chip[data-dia="' + dia + '"]');
+    if (!chip) return;
+    toggleChip(chip);
+  }
+
+  function habilitarCliqueNoCalendario() {
+    document.querySelectorAll('td[data-dia]').forEach(function(td) {
+      var dia = td.dataset.dia;
+      var chip = document.querySelector('.day-chip[data-dia="' + dia + '"]');
+      if (!chip) return;
+
+      td.classList.add('clicavel');
+      td.setAttribute('role', 'button');
+      td.setAttribute('tabindex', '0');
+      td.setAttribute('aria-label', 'Selecionar dia ' + dia);
+
+      td.addEventListener('click', function() {
+        toggleDiaPeloCalendario(dia);
+      });
+
+      td.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          toggleDiaPeloCalendario(dia);
+        }
+      });
+    });
+  }
+
   function showModal(titulo, msg, erro) {
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-msg').textContent = msg;
@@ -867,6 +901,8 @@
     atualizarCalendario();
   }
 
+  habilitarCliqueNoCalendario();
+  atualizarCalendario();
   iniciarSincronizacaoNomes();
 </script>
 

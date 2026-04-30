@@ -126,7 +126,8 @@ function registrarEscala(selecionados) {
   if (!selecionados || selecionados.length === 0) return;
 
   var aba = getDispSheet();
-  var nome = String(selecionados[0][0] || '').trim().toUpperCase();
+  var nome = String(selecionados[0][0] || '').trim();
+  var nomeNorm = normalizePersonName(nome);
 
   var headers = aba.getRange(1, 1, 1, DATE_COLS.length + 1).getValues()[0];
   var colMap = {};
@@ -139,18 +140,30 @@ function registrarEscala(selecionados) {
   }
 
   var lastRow = aba.getLastRow();
-  var targetRow = lastRow + 1;
+  var targetRow = -1;
   if (lastRow > 1) {
-    var names = aba.getRange(2, 1, lastRow, 1).getValues();
+    var names = aba.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
     for (var n = 0; n < names.length; n++) {
-      if (String(names[n][0] || '').trim().toUpperCase() === nome) {
+      var existingNameNorm = normalizePersonName(names[n][0]);
+      if (existingNameNorm && existingNameNorm === nomeNorm) {
         targetRow = n + 2;
         break;
       }
     }
+
+    if (targetRow === -1) {
+      for (var e = 0; e < names.length; e++) {
+        if (!String(names[e][0] || '').trim()) {
+          targetRow = e + 2;
+          break;
+        }
+      }
+    }
   }
 
-  aba.getRange(targetRow, 1).setValue(nome);
+  if (targetRow === -1) targetRow = Math.max(2, lastRow + 1);
+
+  aba.getRange(targetRow, 1).setValue(nome.toUpperCase());
 
   selecionados.forEach(function(item) {
     var iso = normalizeDate(String(item[1] || '').trim());
@@ -158,6 +171,15 @@ function registrarEscala(selecionados) {
     if (!col) return;
     aba.getRange(targetRow, col).setValue(item[2] === 'Disponivel' ? '✓' : '');
   });
+}
+
+function normalizePersonName(rawName) {
+  return String(rawName || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
 }
 
 /* ════════════════════════════════════════
@@ -202,17 +224,27 @@ function getEscalaSheet() {
   return sheet;
 }
 
-function getScheduleData() {
-  var sheet = getEscalaSheet();
+function readEscalaRows(sheet) {
   var data = sheet.getDataRange().getValues();
-  var result = {};
-  var seen = {};
-
+  var rows = [];
   for (var i = 1; i < data.length; i++) {
     var date = normalizeDate(data[i][0]);
     var name = String(data[i][1] || '').trim();
     if (!date || !name) continue;
+    rows.push([date, name]);
+  }
+  return rows;
+}
 
+function getScheduleData() {
+  var sheet = getEscalaSheet();
+  var data = readEscalaRows(sheet);
+  var result = {};
+  var seen = {};
+
+  for (var i = 0; i < data.length; i++) {
+    var date = data[i][0];
+    var name = data[i][1];
     var pairKey = date + '\t' + name.toUpperCase();
     if (seen[pairKey]) continue;
     seen[pairKey] = true;
@@ -269,6 +301,10 @@ function setScheduleData(schedJson) {
     sheet.getRange(newRow, 1, 1, 2).setValues([rows[r]]);
   }
 
+  if (sheet.getLastRow() > 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).sort([{ column: 1, ascending: true }, { column: 2, ascending: true }]);
+  }
+
   return { status: 'ok' };
 }
 
@@ -279,16 +315,18 @@ function addPerson(date, name) {
   if (!date || !name) return { status: 'error', msg: 'invalid params' };
 
   var sheet = getEscalaSheet();
-  var data = sheet.getDataRange().getValues();
-  for (var i = 1; i < data.length; i++) {
-    if (normalizeDate(data[i][0]) === date &&
-      String(data[i][1] || '').trim().toUpperCase() === name.toUpperCase()) {
+  var data = readEscalaRows(sheet);
+  for (var i = 0; i < data.length; i++) {
+    if (data[i][0] === date && data[i][1].toUpperCase() === name.toUpperCase()) {
       return { status: 'exists' };
     }
   }
   var newRow = sheet.getLastRow() + 1;
   sheet.getRange(newRow, 1).setNumberFormat('@STRING@');
   sheet.getRange(newRow, 1, 1, 2).setValues([[date, name]]);
+  if (sheet.getLastRow() > 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).sort([{ column: 1, ascending: true }, { column: 2, ascending: true }]);
+  }
   return { status: 'ok' };
 }
 
@@ -297,15 +335,20 @@ function removePerson(date, name) {
   date = normalizeDate(date);
   name = String(name).trim();
   var sheet = getEscalaSheet();
-  var data = sheet.getDataRange().getValues();
-  for (var i = data.length - 1; i >= 1; i--) {
-    if (normalizeDate(data[i][0]) === date &&
-      String(data[i][1] || '').trim().toUpperCase() === name.toUpperCase()) {
-      sheet.deleteRow(i + 1);
-      return { status: 'ok' };
+  var data = readEscalaRows(sheet);
+  var targetRow = -1;
+  for (var i = data.length - 1; i >= 0; i--) {
+    if (data[i][0] === date && data[i][1].toUpperCase() === name.toUpperCase()) {
+      targetRow = i + 2;
+      break;
     }
   }
-  return { status: 'not_found' };
+  if (targetRow === -1) return { status: 'not_found' };
+  sheet.deleteRow(targetRow);
+  if (sheet.getLastRow() > 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).sort([{ column: 1, ascending: true }, { column: 2, ascending: true }]);
+  }
+  return { status: 'ok' };
 }
 
 function clearScheduleData() {
